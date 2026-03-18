@@ -1,4 +1,3 @@
-# scheduler/implementation/node.py
 import uuid
 from typing import List
 
@@ -13,7 +12,7 @@ from . import sidon
 AwerbuchNode = awerbuch.AwerbuchNode
 SidonNode = sidon.SidonNode
 
-# 🔥 ВИБІР АЛГОРИТМУ
+# Вибір алгоритму
 ALGORITHM = "awerbuch"  # або "sidon"
 
 
@@ -32,11 +31,8 @@ class Mailbox:
         self.outbox.append(action)
 
     def get_actions(self) -> List[Action]:
-        """Повертає всі дії в inbox та outbox, але не видаляє їх"""
-        actions = []
-        actions.extend(self.inbox)
-        actions.extend(self.outbox)
-        return actions
+        """Повертає всі дії в inbox та outbox, не видаляючи їх"""
+        return self.inbox + self.outbox
 
     def remove_action(self, action: Action):
         if action.action_type == 'inbox' and action in self.inbox:
@@ -49,9 +45,9 @@ class Node(AbstractNode):
     def __init__(self, node_id: uuid.UUID, neighbors: List[uuid.UUID]):
         self.node_id = node_id
         self.neighbors = neighbors
-        self.mailbox = Mailbox()  # використання правильного Mailbox
+        self.mailbox = Mailbox()
 
-        # 🔥 створюємо внутрішній алгоритм
+        # Створюємо внутрішній алгоритм
         if ALGORITHM == "awerbuch":
             self.algo = AwerbuchNode(node_id, neighbors)
         elif ALGORITHM == "sidon":
@@ -62,29 +58,18 @@ class Node(AbstractNode):
         self.started = False
 
     def process_action(self, action: Action) -> NodeResponse:
-        """
-        Приймає Action, обробляє його через алгоритм, 
-        і повертає NodeResponse з новими Action
-        """
         new_actions_list = []
 
-        # 🔥 СТАРТ ТІЛЬКИ ОДИН РАЗ (ініціатор)
+        # Старт алгоритму тільки один раз (ініціатор)
         if not self.started:
             self.started = True
             if self.node_id == min(self.neighbors + [self.node_id]):
                 print(f"[Node {self.node_id}] Ініціатор стартує алгоритм")
-                started_actions = self.algo.start()  # повертає список кортежів (target, message)
-                if started_actions is None:
-                    started_actions = []
+                started_actions = self.algo.start() or []
 
                 for target, msg in started_actions:
-                    action_data = {
-                        "target": target,
-                        "message": msg,
-                        "sender": self.node_id
-                    }
                     act = Action(
-                        data=action_data,
+                        data={"target": target, "message": msg, "sender": self.node_id},
                         node_id=self.node_id,
                         action_id=uuid.uuid4()
                     )
@@ -92,26 +77,18 @@ class Node(AbstractNode):
                     new_actions_list.append(act)
                     print(f"[Node {self.node_id}] Створено початкове повідомлення до {target}: {msg}")
 
-        # 🔥 ОБРОБКА ВХІДНОГО ACTION
+        # Обробка вхідного Action
         if action is not None:
             sender = action.data.get("sender")
             message = action.data.get("message")
 
             print(f"[Node {self.node_id}] Прийнято повідомлення від {sender}: {message}")
 
-            # викликаємо алгоритм на прийом повідомлення
-            generated_actions = self.algo.on_receive(sender, message)
-            if generated_actions is None:
-                generated_actions = []
+            generated_actions = self.algo.on_receive(sender, message) or []
 
             for target, msg in generated_actions:
-                action_data = {
-                    "target": target,
-                    "message": msg,
-                    "sender": self.node_id
-                }
                 act = Action(
-                    data=action_data,
+                    data={"target": target, "message": msg, "sender": self.node_id},
                     node_id=self.node_id,
                     action_id=uuid.uuid4()
                 )
