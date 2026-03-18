@@ -2,45 +2,65 @@ class SidonNode:
     def __init__(self, node_id, neighbors):
         self.id = node_id
         self.neighbors = neighbors
-        self.visited_edges = set()
-        self.path_history = set()
+        self.parent = None
+        self.expected_echo = set()          # від кого чекаємо echo
+        self.received_echo = set()
+        self.visited = False
 
     def start(self):
         actions = []
         print(f"[Node {self.id}] Start Sidon algorithm. Sending to neighbors...")
 
+        self.visited = True
         for n in self.neighbors:
-            edge = tuple(sorted((self.id, n)))
-            self.visited_edges.add(edge)
-            print(f"[Node {self.id}] -> sending path [{self.id}] to {n}")
-            actions.append((n, (self.id, [self.id])))
+            print(f"[Node {self.id}] -> sending token to {n}")
+            actions.append((n, ("token", [self.id])))  
+
+        self.expected_echo = set(self.neighbors)   # чекаємо echo від усіх сусідів
 
         return actions
 
     def on_receive(self, sender, message):
         actions = []
-        origin, path = message
 
-        edge = tuple(sorted((self.id, sender)))
+        msg_type, path = message if isinstance(message, tuple) else (message, [])
 
-        if edge in self.visited_edges:
-            return []
+        if msg_type == "token":
+            if self.visited:
+                # вже відвідали → одразу echo назад
+                print(f"[Node {self.id}] Already visited. Sending echo back to {sender}")
+                actions.append((sender, ("echo", None)))
+                return actions
 
-        self.visited_edges.add(edge)
-        new_path = path + [self.id]
-        signature = tuple(new_path)
+            # перший раз
+            self.visited = True
+            self.parent = sender
+            print(f"[Node {self.id}] Received token from {sender}. Parent = {sender}")
 
-        if signature in self.path_history:
-            return []
+            new_path = path + [self.id]
 
-        self.path_history.add(signature)
-        print(f"[Node {self.id}] Received path from {sender}: {path} -> new path {new_path}")
+            # надсилаємо далі всім крім parent
+            for n in self.neighbors:
+                if n != sender:
+                    print(f"[Node {self.id}] -> forwarding token to {n}")
+                    actions.append((n, ("token", new_path)))
+                    self.expected_echo.add(n)
 
-        for n in self.neighbors:
-            if n != sender:
-                next_edge = tuple(sorted((self.id, n)))
-                if next_edge not in self.visited_edges:
-                    print(f"[Node {self.id}] -> forwarding path {new_path} to {n}")
-                    actions.append((n, (origin, new_path)))
+            # якщо немає дітей → одразу echo назад
+            if not self.expected_echo:
+                print(f"[Node {self.id}] Leaf node. Sending echo back to parent {self.parent}")
+                actions.append((self.parent, ("echo", None)))
+
+        elif msg_type == "echo":
+            print(f"[Node {self.id}] Received echo from {sender}")
+            self.received_echo.add(sender)
+
+            if sender in self.expected_echo:
+                self.expected_echo.remove(sender)
+
+            if not self.expected_echo and self.parent is not None:
+                # всі echo отримані → відправляємо echo батькові
+                print(f"[Node {self.id}] All echoes received. Sending echo to parent {self.parent}")
+                actions.append((self.parent, ("echo", None)))
 
         return actions

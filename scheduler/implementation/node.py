@@ -1,5 +1,5 @@
 # scheduler/implementation/node.py
-from mailbox import Mailbox
+from scheduler.core.mailbox import Mailbox
 import uuid
 from typing import List
 from scheduler.abstract.abstract_node import AbstractNode
@@ -9,8 +9,7 @@ from scheduler.core.node_response import NodeResponse
 from . import awerbuch
 from . import sidon
 
-# Обираємо алгоритм
-ALGORITHM = "awerbuch"  # або "sidon"
+ALGORITHM = "awerbuch"  # "awerbuch" "sidon"
 
 class Node(AbstractNode):
     def __init__(self, node_id: uuid.UUID, neighbors: List[uuid.UUID]):
@@ -29,12 +28,15 @@ class Node(AbstractNode):
         return self.node_id == min(self.neighbors + [self.node_id])
 
     def start_algorithm(self):
+        if self.started:
+            return []
+        self.started = True
         acts = self.algo.start() or []
         result = []
         for tgt, msg in acts:
             act = Action(
                 data={"target": tgt, "message": msg, "sender": self.node_id},
-                node_id=self.node_id,
+                node_id=tgt,                 
                 action_id=uuid.uuid4()
             )
             result.append(act)
@@ -50,7 +52,7 @@ class Node(AbstractNode):
         for tgt, message in acts:
             act = Action(
                 data={"target": tgt, "message": message, "sender": self.node_id},
-                node_id=self.node_id,
+                node_id=tgt,                   
                 action_id=uuid.uuid4()
             )
             result.append(act)

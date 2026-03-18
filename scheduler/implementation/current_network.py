@@ -2,38 +2,35 @@ import uuid
 from typing import List, Dict
 
 from scheduler.abstract.abstract_network import AbstractNetwork
+from scheduler.core.node_response import NodeResponse   
 import scheduler.implementation.node
-
 
 class CurrentNetwork(AbstractNetwork):
     NUMBER_OF_NODES = 8
 
     def __init__(self) -> None:
-        # 1️⃣ Генеруємо унікальні ID вузлів
         self.nodes = []
         ids = [uuid.uuid4() for _ in range(self.NUMBER_OF_NODES)]
 
-        # 2️⃣ Створюємо ребра мережі
         self.__get_edges(ids)
 
-        # 3️⃣ Створюємо всі вузли з mailbox та edges
         for node_id in ids:
             node = scheduler.implementation.node.Node(node_id, self.edges[node_id])
             self.nodes.append(node)
 
-        # 4️⃣ Ініціалізуємо AbstractNetwork
         super().__init__(self.nodes)
 
-        # 5️⃣ Старт алгоритму для вузла-ініціатора
-        initiator = min(self.nodes, key=lambda n: n.node_id)  # вузол з найменшим ID
-        response = initiator.process_action(None)  # стартовий виклик
 
-        # 6️⃣ Додаємо стартові дії у mailbox тільки для інших вузлів
+        initiator = min(self.nodes, key=lambda n: n.node_id)
+        initial_acts = initiator.start_algorithm() or []
+        initiator.started = True
+        response = NodeResponse(initial_acts)
+
+        
         for act in response.actions:
-    # додаємо тільки іншим вузлам
-            if act.data['target'] != initiator.node_id:
+            if act.node_id != initiator.node_id:          
                 for node in self.nodes:
-                    if node.node_id == act.data['target']:
+                    if node.node_id == act.node_id:
                         node.mailbox.add_inbox_action(act)
 
     def __iter__(self):
