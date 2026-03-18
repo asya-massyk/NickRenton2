@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./scheduler",
+        "./scheduler/implementation"
+    ]
+}
