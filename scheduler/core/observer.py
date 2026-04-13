@@ -3,38 +3,29 @@ import random
 from typing import List
 from uuid import UUID
 from scheduler.core.action import Action
-from scheduler.implementation.node import Node
+from scheduler.implementation.node import Node, ALGORITHM   
 
 class Observer:
     def __init__(self, nodes: List[Node], tick_delay: float = 0.1):
         self.nodes = nodes
         self.tick_delay = tick_delay
         self.total_messages = 0
-        self.last_tick = 0  # зберігаємо кількість тіків для підсумку
+        self.last_tick = 0
 
         if not nodes:
             print("[Observer] No nodes found — nothing to start")
             return
 
-        # Знаходимо ініціатора (найменший UUID)
-        initiator = min(self.nodes, key=lambda n: n.node_id)
-        print(f"[Observer] Initiator selected: {initiator.node_id}")
+        print("[Observer] ALL NODES start election simultaneously (max ID wins)")
 
-        # Скидаємо стани всіх вузлів
         for node in self.nodes:
-            node.started = False
-
-        # Запускаємо алгоритм тільки на ініціаторі
-        initiator.started = True
-        initial_actions = initiator.start_algorithm() or []
-        
-
-        for act in initial_actions:
-            self._send(act)
-            self.total_messages += 1
+            node.started = True
+            initial_actions = node.start_algorithm() or []
+            for act in initial_actions:
+                self._send(act)
+                self.total_messages += 1
 
     def _send(self, action: Action):
-        """Надсилаємо дію до отримувача (action.node_id — це отримувач)"""
         for dest in self.nodes:
             if dest.node_id == action.node_id:
                 dest.mailbox.add_inbox_action(action)
@@ -67,7 +58,6 @@ class Observer:
                 print("\n=== Simulation finished — no more messages ===")
                 break
 
-            # Перемішуємо для імітації асинхронності
             random.shuffle(pending_actions)
 
             for act in pending_actions:
@@ -75,7 +65,7 @@ class Observer:
 
             time.sleep(self.tick_delay)
 
-        self.last_tick = step  # зберігаємо кількість тіків
+        self.last_tick = step
 
         if step >= MAX_STEPS:
             print("\n=== Reached max steps — possible infinite loop or very large graph ===")
@@ -83,16 +73,16 @@ class Observer:
         self._print_tree_summary()
 
     def _short(self, uid: UUID) -> str:
-        """Скорочений UUID для читабельності"""
         return str(uid)[:8] + "..."
 
     def _print_tree_summary(self):
         print("\n=== Spanning Tree Structure ===")
         tree = {}
-        root = min(self.nodes, key=lambda n: n.node_id)
+
+        # 🔥 правильний root
+        root_node = next((n for n in self.nodes if n.algo.parent == n.node_id), None)
 
         for node in self.nodes:
-            # Безпечне отримання parent (різні алгоритми можуть мати різні назви)
             parent = getattr(node.algo, 'parent', None)
             if parent is None or parent == node.node_id:
                 continue
@@ -102,26 +92,32 @@ class Observer:
                 tree[p_short] = []
             tree[p_short].append(self._short(node.node_id))
 
-        # Сортуємо дітей для кращого вигляду
         for children in tree.values():
             children.sort()
 
         from pprint import pprint
         pprint(tree, width=100, compact=True)
 
-        root_short = self._short(root.node_id)
-        print(f"Root: {root_short}")
+        if root_node:
+            root_short = self._short(root_node.node_id)
+            print(f"Root: {root_short}")
 
-        if root_short in tree:
-            print(f"Root children: {', '.join(tree[root_short])}")
+            if root_short in tree:
+                print(f"Root children: {', '.join(tree[root_short])}")
+            else:
+                print("Root has no children")
         else:
-            print("Root has no children (single node network?)")
+            print("Root not found")
 
-        # Підсумок
         print(f"\n=== Summary ===")
-        algo_name = 'Awerbuch' if 'awerbuch' in str(type(root.algo)).lower() else 'Sidon'
+        algo_map = {
+            "awerbuch": "Awerbuch",
+            "sidon": "Sidon",
+            "echo_election": "Echo Election (Spanning Tree + Leader)"
+        }
+        algo_name = algo_map.get(ALGORITHM, ALGORITHM.capitalize())
         print(f"  Algorithm: {algo_name}")
         print(f"  Nodes: {len(self.nodes)}")
         print(f"  Total messages sent: {self.total_messages}")
         print(f"  Ticks: {self.last_tick}")
-        print("  Spanning tree built successfully  ")
+        print("  Spanning tree built successfully")
