@@ -1,60 +1,57 @@
-# scheduler/implementation/node.py
+import os
 from scheduler.core.mailbox import Mailbox
-import uuid
-from typing import List
-from scheduler.abstract.abstract_node import AbstractNode
 from scheduler.core.action import Action
 from scheduler.core.node_response import NodeResponse
 
-from . import awerbuch
-from . import sidon
+from . import safra
+from . import rana
 
-ALGORITHM = "awerbuch"  # "awerbuch" "sidon"
+# 🔥 перемикання алгоритму через env
+ALGORITHM = os.getenv("ALGORITHM", "rana")
 
-class Node(AbstractNode):
-    def __init__(self, node_id: uuid.UUID, neighbors: List[uuid.UUID]):
+
+class Node:
+    def __init__(self, node_id, neighbors):
         self.node_id = node_id
         self.neighbors = neighbors
         self.mailbox = Mailbox()
-        self.started = False
 
-        if ALGORITHM == "awerbuch":
-            self.algo = awerbuch.AwerbuchNode(node_id, neighbors)
+        if ALGORITHM == "safra":
+            self.algo = safra.SafraNode(node_id, neighbors)
         else:
-            self.algo = sidon.SidonNode(node_id, neighbors)
-
-    def is_initiator(self) -> bool:
-        # Ініціатор — вузол з мінімальним UUID
-        return self.node_id == min(self.neighbors + [self.node_id])
+            self.algo = rana.RanaNode(node_id, neighbors)
 
     def start_algorithm(self):
-        if self.started:
-            return []
-        self.started = True
-        acts = self.algo.start() or []
-        result = []
-        for tgt, msg in acts:
-            act = Action(
-                data={"target": tgt, "message": msg, "sender": self.node_id},
-                node_id=tgt,                 
-                action_id=uuid.uuid4()
+        return [
+            Action(
+                data={"sender": self.node_id, "message": ("BASIC", None)},
+                node_id=n
             )
-            result.append(act)
-        return result
+            for n in self.neighbors
+        ]
 
-    def process_action(self, action: Action) -> NodeResponse:
+    def process(self, action):
         sender = action.data["sender"]
-        msg = action.data["message"]
+        msg_type, payload = action.data["message"]
 
-        # Обробка через алгоритм
-        acts = self.algo.on_receive(sender, msg) or []
-        result = []
-        for tgt, message in acts:
-            act = Action(
-                data={"target": tgt, "message": message, "sender": self.node_id},
-                node_id=tgt,                   
-                action_id=uuid.uuid4()
+        out = []
+
+        if msg_type == "BASIC":
+            if hasattr(self.algo, "on_send"):
+                self.algo.on_send()
+
+            out = self.algo.on_basic(sender)
+
+        elif msg_type == "ACK":
+            out = self.algo.on_ack(sender)
+
+        elif msg_type == "TOKEN":
+            out = self.algo.on_token(payload)
+
+        return NodeResponse([
+            Action(
+                data={"sender": self.node_id, "message": msg},
+                node_id=tgt
             )
-            result.append(act)
-
-        return NodeResponse(result)
+            for tgt, msg in out
+        ])
